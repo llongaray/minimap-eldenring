@@ -33,6 +33,7 @@ var (
 	createWindow     = u32.NewProc("CreateWindowExW")
 	defWindow        = u32.NewProc("DefWindowProcW")
 	showWindow       = u32.NewProc("ShowWindow")
+	isWindowVisible  = u32.NewProc("IsWindowVisible")
 	setWindowPos     = u32.NewProc("SetWindowPos")
 	getForeground    = u32.NewProc("GetForegroundWindow")
 	getWindowPID     = u32.NewProc("GetWindowThreadProcessId")
@@ -425,6 +426,7 @@ func run(dir string, store *core.Store, markers []core.Marker) error {
 	readerResults := make(chan readerOutcome, 1)
 	readerPending := false
 	lastHeartbeat := time.Time{}
+	firstDraw := false
 	log.Printf("Loop Win32 iniciado: HUD pronto para exibicao antes da leitura de memoria")
 	for {
 		var m msg
@@ -512,7 +514,8 @@ func run(dir string, store *core.Store, markers []core.Marker) error {
 		active := a.gamePID != 0 && (focusPID == a.gamePID || fg == a.full || fg == a.mini)
 		if now.Sub(lastHeartbeat) > 5*time.Second {
 			lastHeartbeat = now
-			log.Printf("Heartbeat Win32: ativo=%v foregroundPID=%d jogoPID=%d mapa=%v readerPending=%v readerReady=%v HUD=0x%x", active, focusPID, a.gamePID, a.open, readerPending, a.reader != nil, a.mini)
+			visible, _, _ := isWindowVisible.Call(a.mini)
+			log.Printf("Heartbeat Win32: ativo=%v foregroundPID=%d jogoPID=%d mapa=%v readerPending=%v readerReady=%v HUD=0x%x visivel=%v", active, focusPID, a.gamePID, a.open, readerPending, a.reader != nil, a.mini, visible != 0)
 		}
 		if active != a.lastActive {
 			log.Printf("Estado de foco: ativo=%v HWND=0x%x PIDForeground=%d PIDJogo=%d", active, fg, focusPID, a.gamePID)
@@ -537,12 +540,18 @@ func run(dir string, store *core.Store, markers []core.Marker) error {
 		}
 		a.lastF6 = f6
 		if now.Sub(lastDraw) > 110*time.Millisecond && active {
+			started := time.Now()
+			if !firstDraw { log.Printf("Primeiro desenho iniciado; camada=%s, marcadores=%d", a.settings.Layer, len(a.markers)) }
 			if a.open {
 				a.drawFull()
 			} else {
 				a.drawMini()
 			}
 			lastDraw = now
+			if !firstDraw {
+				log.Printf("Primeiro desenho concluido em %s", time.Since(started))
+				firstDraw = true
+			}
 		}
 		time.Sleep(18 * time.Millisecond)
 	}

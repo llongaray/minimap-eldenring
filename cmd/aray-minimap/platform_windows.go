@@ -128,6 +128,14 @@ type bounds struct{ X, Y, W, H int }
 
 var singleton *app
 
+// O scanner de assinaturas pode consumir tempo no executavel real. Seus
+// resultados chegam por canal; somente a thread Win32 manipula as janelas.
+type readerOutcome struct {
+	reader *game.Reader
+	err error
+}
+
+
 // Ativada pela build c-shared: a interface vive dentro do eldenring.exe.
 var insideGameDLL bool
 
@@ -414,6 +422,10 @@ func run(dir string, store *core.Store, markers []core.Marker) error {
 	lastDiagnostic := time.Time{}
 	lastStatus := ""
 	gameGoneAt := time.Now()
+	readerResults := make(chan readerOutcome, 1)
+	readerPending := false
+	lastHeartbeat := time.Time{}
+	log.Printf("Loop Win32 iniciado: HUD pronto para exibicao antes da leitura de memoria")
 	for {
 		var m msg
 		for {
@@ -425,15 +437,29 @@ func run(dir string, store *core.Store, markers []core.Marker) error {
 			dispatchMessage.Call(uintptr(unsafe.Pointer(&m)))
 		}
 		now := time.Now()
-		if now.Sub(a.lastReaderAttempt) > 3*time.Second && a.reader == nil {
-			a.lastReaderAttempt = now
-			if reader, e := game.NewReader(); e == nil {
-				a.reader = reader
-				a.message = reader.Build()
-				log.Printf("Assinaturas encontradas no executável: %s", a.message)
+		// Nunca bloquear o loop de mensagens Win32 para procurar assinaturas.
+		// O jogo pode ter dezenas de MB de codigo para verificar.
+		select {
+		case result := <-readerResults:
+			readerPending = false
+			if result.err == nil {
+				a.reader = result.reader
+				a.message = result.reader.Build()
+				log.Printf("Leitura de memoria inicializada: %s", a.message)
 			} else {
-				a.raw = game.RawSample{Status: e.Error()}
+				a.raw = game.RawSample{Status: result.err.Error()}
+				log.Printf("Leitura de memoria indisponivel: %v", result.err)
 			}
+		default:
+		}
+		if a.reader == nil && !readerPending && now.Sub(a.lastReaderAttempt) > 5*time.Second {
+			a.lastReaderAttempt = now
+			readerPending = true
+			log.Printf("Iniciando busca de assinaturas de memoria em goroutine")
+			go func() {
+				r, e := game.NewReader()
+				readerResults <- readerOutcome{reader: r, err: e}
+			}()
 		}
 		if !insideGameDLL && now.Sub(lastPIDCheck) > 800*time.Millisecond {
 			lastPIDCheck = now
@@ -484,6 +510,10 @@ func run(dir string, store *core.Store, markers []core.Marker) error {
 		var focusPID uint32
 		getWindowPID.Call(fg, uintptr(unsafe.Pointer(&focusPID)))
 		active := a.gamePID != 0 && (focusPID == a.gamePID || fg == a.full || fg == a.mini)
+		if now.Sub(lastHeartbeat) > 5*time.Second {
+			lastHeartbeat = now
+			log.Printf("Heartbeat Win32: ativo=%v foregroundPID=%d jogoPID=%d mapa=%v readerPending=%v readerReady=%v HUD=0x%x", active, focusPID, a.gamePID, a.open, readerPending, a.reader != nil, a.mini)
+		}
 		if active != a.lastActive {
 			log.Printf("Estado de foco: ativo=%v HWND=0x%x PIDForeground=%d PIDJogo=%d", active, fg, focusPID, a.gamePID)
 			a.lastActive = active

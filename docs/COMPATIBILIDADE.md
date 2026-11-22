@@ -1,20 +1,28 @@
-# Matriz de compatibilidade e riscos
+# Compatibilidade — Aray Minimap 0.2 (DLL direta)
 
-| Cenário | Compila | Validado no jogo | Situação |
-|---|---:|---:|---|
-| Go core em Linux | Sim | N/A | Testes unitários passaram |
-| Go auxiliar Windows x64 (cross-compilação) | Sim | Não | PE válido; não executado em Windows |
-| Bridge DLL x64 com imports kernel32 | Sim | Não | Imports PE inspecionados; não carregada em EML |
-| Elden Ring 1.16 instalado pelo usuário | Não aplicável | Não | Assinaturas e offset podem divergir |
-| Elden Ring oficial/Steam | Não aplicável | Não | Inicialização EAC desativado requerida |
-| Instalador em E:\Games\ELDEN RING | Fonte gerada | Não | Sem execução em Windows |
-| Integridade dos controles durante uso | Código sem hook de remapeamento | Não | Necessita teste manual |
-| Tiles e marcadores jw-ofs | Importador implementado | Não | Requer cópia local autorizada |
+| Cenário | Status |
+|---|---|
+| Go core/testes | Testes unitários executados no runner |
+| DLL c-shared Windows x64 | Compilação verificada exclusivamente pelo GitHub Actions |
+| Instalador CMD / PowerShell | Simulação de instalação sem jogo real |
+| Elden Mod Loader | Estrutura de DLL em Game/mods; carregamento real pendente |
+| Edição instalada do Elden Ring 1.16 | Leitor de posição validado isoladamente em versão anterior, sem HUD |
+| DLL carregada dentro do eldenring.exe | **Pendente de teste manual** |
+| F6, foco, desenho do HUD e controles | **Pendente de teste manual** |
+| Marcação e texturas | Interpretador de 1.861 marcadores e importação de 3.125 tiles já foram testados pelo usuário na versão 0.1 |
+| Calibração do player para pixels jw-ofs | **Pendente**; não assumir transformação identidade |
+| Steam e não-Steam | Deve ser validado por instalação; não garantido |
 
-## Falhas fechadas
+## Arquitetura
 
-A ausência de dados do mapa desativa texturas/marcadores, sem criar posições inventadas. Assinaturas inválidas desativam a localização. O valor padrão `calibration.enabled=false` impede mostrar posição incorreta por suposição de alinhamento. Isso exige calibração e teste reais antes de considerar a função de rastreamento pronta.
+A versão v0.2 não depende de ArayMinimap.exe. O próprio Game/mods/ArayMinimap.dll contém o runtime Go, a interface Win32 e o leitor de memória. O Elden Mod Loader existente permanece intacto, sem injeção adicional.
 
-## Limitações adicionais
+O estado `calibration.enabled=false` evita representar localização incorreta como real. O HUD pode mostrar texturas/markers, mas a centralização no personagem precisa de aferição real entre coordenadas do jogo e tiles.
 
-O HUD nativo utiliza Win32 GDI e não suporta ainda rotação da câmera. O marcador direcional é renderizado quando a calibração estiver validada. A interface não inclui todos os pop-ups, os 30 fluxos de missão do site de referência nem banco interno de itens em português. Múltiplas telas, DPI não padrão e tela cheia exclusiva precisam ser testados em Windows.
+A interface é limitada a Win32/GDI e janela sem bordas; telas exclusivas, múltiplas telas e DPI precisam de teste. Logs: `Game/mods/ArayMinimap/data/arayminimap.log`.
+
+## Recuperação
+
+Com jogo fechado, renomeie apenas `Game/mods/ArayMinimap.dll` para `ArayMinimap.dll.disabled` se houver erro de inicialização. Não apague `dinput8.dll`, o save ou `data/`. Os binários anteriores ficam no backup do instalador.
+
+A presença de uma DLL gerada na CI não é evidência de que a DLL foi carregada corretamente em Elden Ring.

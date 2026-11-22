@@ -69,6 +69,7 @@ const (
 	wsExTool         = 0x80
 	wsExLayered      = 0x80000
 	wsExTransparent  = 0x20
+	wsExNoActivate   = 0x08000000
 	swHide           = 0
 	swShow           = 5
 	swShowNoActivate = 8
@@ -126,6 +127,9 @@ type tile struct {
 type bounds struct{ X, Y, W, H int }
 
 var singleton *app
+
+// Ativada pela build c-shared: a interface vive dentro do eldenring.exe.
+var insideGameDLL bool
 
 type app struct {
 	dir               string
@@ -349,6 +353,8 @@ func run(dir string, store *core.Store, markers []core.Marker) error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	a := &app{dir: dir, store: store, settings: store.Get(), markers: markers, tiles: map[string]*tile{}, missedTiles: map[string]bool{}, catCount: map[string]int{}, centerX: 5248, centerY: 5248, zoom: 1}
+	if insideGameDLL { a.gamePID = uint32(os.Getpid()) }
+	log.Printf("Inicializacao Win32: jogoPID=%d emDLL=%v marcadores=%d", a.gamePID, insideGameDLL, len(markers))
 	singleton = a
 	for _, m := range markers {
 		a.catCount[m.Category]++
@@ -378,7 +384,7 @@ func run(dir string, store *core.Store, markers []core.Marker) error {
 	if strings.HasPrefix(a.settings.Position, "bottom") {
 		miniY = a.screenH - miniSize - 25
 	}
-	a.mini, _, err = createWindow.Call(wsExTopmost|wsExTool|wsExLayered|wsExTransparent, uintptr(unsafe.Pointer(cls)), uintptr(unsafe.Pointer(ptr("Aray Minimap HUD"))), wsPopup, uintptr(miniX), uintptr(miniY), uintptr(miniSize), uintptr(miniSize), 0, 0, instance, 0)
+	a.mini, _, err = createWindow.Call(wsExTopmost|wsExTool|wsExLayered|wsExTransparent|wsExNoActivate, uintptr(unsafe.Pointer(cls)), uintptr(unsafe.Pointer(ptr("Aray Minimap HUD"))), wsPopup, uintptr(miniX), uintptr(miniY), uintptr(miniSize), uintptr(miniSize), 0, 0, instance, 0)
 	if a.mini == 0 {
 		return fmt.Errorf("HUD Win32: %v", err)
 	}
@@ -391,6 +397,7 @@ func run(dir string, store *core.Store, markers []core.Marker) error {
 	a.fontSmall, _, _ = createFont.Call(17, 0, 0, 0, 500, 0, 0, 0, 0, 0, 0, 0, 0, uintptr(unsafe.Pointer(ptr("Segoe UI"))))
 	showWindow.Call(a.full, swHide)
 	showWindow.Call(a.mini, swHide)
+	log.Printf("Janelas criadas: HUD=0x%x MAPA=0x%x tela=%dx%d opacidade=%d", a.mini, a.full, a.screenW, a.screenH, a.settings.Opacity)
 	defer func() {
 		if a.reader != nil {
 			a.reader.Close()
@@ -428,7 +435,7 @@ func run(dir string, store *core.Store, markers []core.Marker) error {
 				a.raw = game.RawSample{Status: e.Error()}
 			}
 		}
-		if now.Sub(lastPIDCheck) > 800*time.Millisecond {
+		if !insideGameDLL && now.Sub(lastPIDCheck) > 800*time.Millisecond {
 			lastPIDCheck = now
 			pid, e := game.PID()
 			if e == nil && a.gamePID != 0 && a.gamePID != pid {
@@ -476,7 +483,11 @@ func run(dir string, store *core.Store, markers []core.Marker) error {
 		fg, _, _ := getForeground.Call()
 		var focusPID uint32
 		getWindowPID.Call(fg, uintptr(unsafe.Pointer(&focusPID)))
-		active := a.gamePID != 0 && (focusPID == a.gamePID || fg == a.full)
+		active := a.gamePID != 0 && (focusPID == a.gamePID || fg == a.full || fg == a.mini)
+		if active != a.lastActive {
+			log.Printf("Estado de foco: ativo=%v HWND=0x%x PIDForeground=%d PIDJogo=%d", active, fg, focusPID, a.gamePID)
+			a.lastActive = active
+		}
 		if !active && a.open {
 			a.openMap(false)
 		}
@@ -491,6 +502,7 @@ func run(dir string, store *core.Store, markers []core.Marker) error {
 		}
 		f6 := keyDown(a.settings.F6Key)
 		if active && f6 && !a.lastF6 {
+			log.Printf("Atalho F6 acionado; mapaAberto=%v", !a.open)
 			a.openMap(!a.open)
 		}
 		a.lastF6 = f6

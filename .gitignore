@@ -1,0 +1,13 @@
+/build/
+/dist/
+*.exe
+*.dll
+*.obj
+*.lib
+*.pdb
+*.zip
+*.tmp
+*.bak
+_data/
+/data/
+__pycache__/

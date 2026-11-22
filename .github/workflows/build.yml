@@ -1,0 +1,44 @@
+name: Windows preview build
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-build:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Unit tests and static analysis
+        shell: pwsh
+        run: |
+          go test ./...
+          go vet ./...
+      - name: Configure MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+      - name: Build Win32 launcher DLL and app
+        shell: cmd
+        run: |
+          if not exist dist mkdir dist
+          cl /nologo /LD /O2 /GS- /Fe:dist\ArayMinimap.dll src\launcher\ArayMinimap.c
+          if errorlevel 1 exit /b 1
+          go build -trimpath -ldflags="-s -w -H=windowsgui" -o dist\ArayMinimap.exe ./cmd/aray-minimap
+          if errorlevel 1 exit /b 1
+      - name: Pack experimental artifacts
+        shell: pwsh
+        run: |
+          $items = @('dist/ArayMinimap.dll','dist/ArayMinimap.exe','install.ps1','install.cmd','uninstall.ps1','uninstall.cmd','README.md','LICENSE','scripts/import_tiles.py')
+          Compress-Archive -LiteralPath $items -DestinationPath dist/ArayMinimap-v0.1.0-preview.1-win64.zip -Force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ArayMinimap-win64-preview
+          path: dist/ArayMinimap-v0.1.0-preview.1-win64.zip
+          if-no-files-found: error
+          retention-days: 14

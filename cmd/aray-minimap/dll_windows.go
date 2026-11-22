@@ -11,7 +11,6 @@ import "C"
 
 import (
     "fmt"
-    "io"
     "log"
     "os"
     "path/filepath"
@@ -79,7 +78,7 @@ func nativeDLLStartup() {
         return
     }
     defer f.Close()
-    log.SetOutput(io.MultiWriter(os.Stderr, f))
+    log.SetOutput(f)
     bootstrapTrace("Log principal aberto com sucesso")
     log.Printf("Aray Minimap DLL direta diagnosticada | jogo=%s | dados=%s", exe, dataDir)
 

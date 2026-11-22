@@ -3,7 +3,7 @@
 ![Licença GPLv3](https://img.shields.io/badge/license-GPL--3.0-blue)
 ![Build Windows](https://github.com/llongaray/minimap-eldenring/actions/workflows/build.yml/badge.svg)
 
-**Estado: v0.2.0-preview.2, experimental. A integração no Elden Ring 1.16 ainda exige teste manual.**
+**Estado: v0.2.1-preview.3, experimental. A integração no Elden Ring 1.16 ainda exige teste manual.**
 
 Minimapa e mapa detalhado F6 em **português brasileiro**. Projeto próprio, sem execução de ArayMinimap.exe, sem Map for Goblins e sem modificar o TarnishedAtlas.
 
@@ -55,9 +55,9 @@ gh run list -R llongaray/minimap-eldenring --limit 5
 Identifique a última execução de CI bem-sucedida após o commit da DLL nativa (v0.2). Substitua **RUN_ID** pelo número real:
 
 ```cmd
-gh run download RUN_ID -R llongaray/minimap-eldenring -n ArayMinimap-native-dll-preview -D "_ci"
+gh run download RUN_ID -R llongaray/minimap-eldenring -n ArayMinimap-native-dll-diagnostic -D "_ci"
 mkdir "_ci\extraido"
-tar -xf "_ci\ArayMinimap-v0.2.0-preview.2-win64.zip" -C "_ci\extraido"
+tar -xf "_ci\ArayMinimap-v0.2.1-preview.3-win64.zip" -C "_ci\extraido"
 if not exist "dist" mkdir "dist"
 for /r "_ci\extraido" %F in (ArayMinimap.dll) do @copy /Y "%F" "dist\"
 install.cmd "E:\Games\ELDEN RING"
@@ -113,7 +113,17 @@ Os registros da DLL são gravados em:
 Game/mods/ArayMinimap/data/arayminimap.log
 ```
 
-O log registra início da DLL, criação de janelas, estados de foco e tecla F6. A ausência de log pode indicar que o Elden Mod Loader não carregou a DLL.
+O log registra início da DLL, criação de janelas, estados de foco e tecla F6. A DLL tambem registra um log de bootstrap independente em `%TEMP%\\ArayMinimap-bootstrap.log`, antes de acessar os arquivos do jogo. Consulte esse arquivo quando o mod estiver carregado mas o HUD/F6 não funcionarem.
+
+```cmd
+type "%TEMP%\\ArayMinimap-bootstrap.log"
+powershell -NoProfile -Command "Get-Content 'E:\\Games\\ELDEN RING\\Game\\mods\\ArayMinimap\\data\\arayminimap.log' -Tail 35"
+tasklist /FI "IMAGENAME eq eldenring.exe" /M ArayMinimap.dll
+```
+
+`ArayMinimap-bootstrap.log` tem PID e hora por linha; compare com a execução atual para não confundir com tentativas anteriores.
+
+**Diagnóstico:** ausência de log não prova ausência de DLL. Confira primeiro o processo com `tasklist /M`. Quando o processo mostra a DLL, mas o bootstrap não aparece, investigue a inicialização do runtime.
 
 A calibração fica desativada por padrão. É preciso aferir a correspondência da posição real à imagem do mapa (tiles jw-ofs). O leitor não inventa posição quando não há leitura válida. Nunca habilite valores arbitrários sem aferir.
 
@@ -130,7 +140,7 @@ set GOARCH=amd64
 go build -trimpath -tags araydll -buildmode=c-shared -ldflags="-s -w" -o dist\ArayMinimap.dll .\cmd\aray-minimap
 ```
 
-O GitHub Actions usa MSYS2 UCRT64 no Windows e publica somente `ArayMinimap-native-dll-preview`, sem release estável até validação no jogo. O antigo bridge em C e o executável auxiliar não fazem mais parte do processo de build.
+O GitHub Actions usa MSYS2 UCRT64 no Windows e publica somente `ArayMinimap-native-dll-diagnostic`, sem release estável até validação no jogo. O antigo bridge em C e o executável auxiliar não fazem mais parte do processo de build.
 
 ## Desinstalação
 

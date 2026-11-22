@@ -9,6 +9,7 @@ import (
 	"image/draw"
 	_ "image/jpeg"
 	_ "image/png"
+	"log"
 	"math"
 	"os"
 	"path/filepath"
@@ -369,7 +370,15 @@ func run(dir string, store *core.Store, markers []core.Marker) error {
 		return fmt.Errorf("RegisterClassExW: %v", err)
 	}
 	miniSize := a.settings.Size
-	a.mini, _, err = createWindow.Call(wsExTopmost|wsExTool|wsExLayered|wsExTransparent, uintptr(unsafe.Pointer(cls)), uintptr(unsafe.Pointer(ptr("Aray Minimap HUD"))), wsPopup, uintptr(a.screenW-miniSize-25), 25, uintptr(miniSize), uintptr(miniSize), 0, 0, instance, 0)
+	miniX := a.screenW - miniSize - 25
+	miniY := 25
+	if strings.HasSuffix(a.settings.Position, "left") {
+		miniX = 25
+	}
+	if strings.HasPrefix(a.settings.Position, "bottom") {
+		miniY = a.screenH - miniSize - 25
+	}
+	a.mini, _, err = createWindow.Call(wsExTopmost|wsExTool|wsExLayered|wsExTransparent, uintptr(unsafe.Pointer(cls)), uintptr(unsafe.Pointer(ptr("Aray Minimap HUD"))), wsPopup, uintptr(miniX), uintptr(miniY), uintptr(miniSize), uintptr(miniSize), 0, 0, instance, 0)
 	if a.mini == 0 {
 		return fmt.Errorf("HUD Win32: %v", err)
 	}
@@ -394,6 +403,9 @@ func run(dir string, store *core.Store, markers []core.Marker) error {
 		}
 	}()
 	lastDraw := time.Time{}
+	lastPIDCheck := time.Time{}
+	lastDiagnostic := time.Time{}
+	lastStatus := ""
 	gameGoneAt := time.Now()
 	for {
 		var m msg
@@ -411,23 +423,28 @@ func run(dir string, store *core.Store, markers []core.Marker) error {
 			if reader, e := game.NewReader(); e == nil {
 				a.reader = reader
 				a.message = reader.Build()
+				log.Printf("Assinaturas encontradas no executável: %s", a.message)
 			} else {
 				a.raw = game.RawSample{Status: e.Error()}
 			}
 		}
-		pid, e := game.PID()
-		if e == nil && a.gamePID != 0 && a.gamePID != pid {
-			if a.reader != nil {
-				a.reader.Close()
-				a.reader = nil
+		if now.Sub(lastPIDCheck) > 800*time.Millisecond {
+			lastPIDCheck = now
+			pid, e := game.PID()
+			if e == nil && a.gamePID != 0 && a.gamePID != pid {
+				if a.reader != nil {
+					a.reader.Close()
+					a.reader = nil
+				}
+				a.player = nil
 			}
-			a.player = nil
-		}
-		if e == nil {
-			a.gamePID = pid
-			gameGoneAt = now
-		} else if now.Sub(gameGoneAt) > 8*time.Second {
-			return nil
+			if e == nil {
+				a.gamePID = pid
+				gameGoneAt = now
+			} else if now.Sub(gameGoneAt) > 8*time.Second {
+				log.Printf("O processo Elden Ring encerrou; saindo do overlay")
+				return nil
+			}
 		}
 		if a.reader != nil && now.Sub(a.lastSample) > 250*time.Millisecond {
 			a.lastSample = now
@@ -442,6 +459,18 @@ func run(dir string, store *core.Store, markers []core.Marker) error {
 				}
 			} else {
 				a.player = nil
+			}
+		}
+		if now.Sub(lastDiagnostic) > 2*time.Second {
+			lastDiagnostic = now
+			if a.raw.Ready {
+				if e := saveDiagnostics(a.dir, a.raw); e != nil {
+					log.Printf("Falha no diagnóstico: %v", e)
+				}
+			}
+			if a.raw.Status != lastStatus {
+				log.Printf("Estado da posição: %s", a.raw.Status)
+				lastStatus = a.raw.Status
 			}
 		}
 		fg, _, _ := getForeground.Call()
@@ -569,6 +598,9 @@ func (a *app) drawTile(hdc uintptr, t *tile, x, y, w, h int) {
 }
 func (a *app) renderMap(hdc uintptr, b bounds, layer core.Layer, centerX, centerY, zoom float64, mini bool) {
 	a.rect(hdc, b.X, b.Y, b.W, b.H, 30, 38, 36)
+	if len(a.markers) == 0 {
+		a.text(hdc, b.X+8, b.Y+12, "Sem marcadores; importe markers.js", 218, 195, 141, true)
+	}
 	scale := float64(b.W) / 10496 * zoom
 	if mini {
 		scale = zoom * 0.45

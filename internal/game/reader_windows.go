@@ -98,7 +98,7 @@ func NewReader() (r *Reader, err error) {
 	r = &Reader{process: h, layout: -1}
 	defer func() {
 		if err != nil {
-			r.Close()
+			closeHandle.Call(h)
 		}
 	}()
 	snap, _, _ := createSnapshot.Call(moduleSnapshot, uintptr(pid))

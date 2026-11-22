@@ -34,7 +34,13 @@ try {
  }
  $dll=Join-Path $PSScriptRoot 'dist\ArayMinimap.dll'
  $exe=Join-Path $PSScriptRoot 'dist\ArayMinimap.exe'
- foreach($f in @($dll,$exe)){if(-not(Test-Path -LiteralPath $f)){throw "Binario ausente: $f"};if((Get-Item -LiteralPath $f).Length -lt 1024){throw "Arquivo invalido: $f"}}
+ $checker=Join-Path $PSScriptRoot 'dist\ArayMinimap-Check.exe'
+ foreach($f in @($dll,$exe,$checker)){if(-not(Test-Path -LiteralPath $f)){throw "Binario ausente: $f"};if((Get-Item -LiteralPath $f).Length -lt 1024){throw "Arquivo invalido: $f"}}
+ if($MapSource){
+   $sourceCandidate=$MapSource
+   if(Test-Path -LiteralPath $MapSource -PathType Container){$sourceCandidate=Join-Path $MapSource 'markers.js'}
+   if(-not(Test-Path -LiteralPath $sourceCandidate)){throw "Arquivo de marcadores nao encontrado: $sourceCandidate"}
+ }
  $root=Split-Path -Parent $game
  $backup=Join-Path $root ("_ArayMinimapBackups\{0}" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
  New-Item -ItemType Directory -Path $backup -Force|Out-Null
@@ -46,6 +52,7 @@ try {
  $targetDll=Join-Path $mods 'ArayMinimap.dll'
  $targetDir=Join-Path $mods 'ArayMinimap'
  $targetExe=Join-Path $targetDir 'ArayMinimap.exe'
+ $targetChecker=Join-Path $targetDir 'ArayMinimap-Check.exe'
  $targetData=Join-Path $targetDir 'data'
  $copyBackup=Join-Path $backup 'anterior'
  New-Item -ItemType Directory -Path $copyBackup -Force|Out-Null
@@ -73,6 +80,7 @@ try {
    Copy-Item -LiteralPath $dll -Destination ($targetDll+'.new') -Force
    if((Get-FileHash -Algorithm SHA256 -LiteralPath ($targetDll+'.new')).Hash -ne (Get-FileHash -Algorithm SHA256 -LiteralPath $dll).Hash){throw 'Hash da DLL diferente.'}
    Move-Item -LiteralPath $stage -Destination $targetExe -Force
+   Copy-Item -LiteralPath $checker -Destination $targetChecker -Force
    Move-Item -LiteralPath ($targetDll+'.new') -Destination $targetDll -Force
    # The reference source is imported locally, never republished by this project.
    if($MapSource){
@@ -86,8 +94,11 @@ try {
    foreach($entry in $disabled){if(Test-Path -LiteralPath $entry.to){Move-Item -LiteralPath $entry.to -Destination $entry.from -Force}}
    foreach($name in @('ArayMinimap.dll','ArayMinimap.exe')){
       $old=Join-Path $copyBackup $name
-      if(Test-Path -LiteralPath $old){$restore=if($name -eq 'ArayMinimap.dll'){$targetDll}else{$targetExe};Copy-Item -LiteralPath $old -Destination $restore -Force}
+      $restore=if($name -eq 'ArayMinimap.dll'){$targetDll}else{$targetExe}
+      if(Test-Path -LiteralPath $old){Copy-Item -LiteralPath $old -Destination $restore -Force}
+      elseif(Test-Path -LiteralPath $restore){Remove-Item -LiteralPath $restore -Force}
    }
+   foreach($temp in @((Join-Path $targetDir '.ArayMinimap.new.exe'),($targetDll+'.new'))){if(Test-Path -LiteralPath $temp){Remove-Item -LiteralPath $temp -Force}}
    throw
  }
  if(-not(Test-Path -LiteralPath $targetDll) -or -not(Test-Path -LiteralPath $targetExe)){throw 'Instalacao nao passou na validacao final.'}

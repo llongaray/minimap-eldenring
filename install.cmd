@@ -11,6 +11,7 @@ if not exist "%GAME%\dinput8.dll" (echo [ERRO] Elden Mod Loader nao detectado.&e
 if not exist "%GAME%\mod_loader_config.ini" (echo [ERRO] Configuracao do loader ausente.&exit /b 1)
 if not exist "%SRC%dist\ArayMinimap.dll" (echo [ERRO] DLL nao compilada.&exit /b 1)
 if not exist "%SRC%dist\ArayMinimap.exe" (echo [ERRO] EXE nao compilado.&exit /b 1)
+if not exist "%SRC%dist\ArayMinimap-Check.exe" (echo [ERRO] Checker nao compilado.&exit /b 1)
 tasklist /FI "IMAGENAME eq eldenring.exe" | findstr /I /C:"eldenring.exe" >nul
 if not errorlevel 1 (echo [ERRO] Feche o jogo antes de instalar.&exit /b 1)
 set "MODS=%GAME%\mods"
@@ -35,6 +36,8 @@ copy /Y "%SRC%dist\ArayMinimap.dll" "%MODS%\ArayMinimap.dll" >nul
 if errorlevel 1 (echo [ERRO] Copia da DLL falhou.&exit /b 1)
 copy /Y "%SRC%dist\ArayMinimap.exe" "%ARAY%\ArayMinimap.exe" >nul
 if errorlevel 1 (echo [ERRO] Copia do EXE falhou.&exit /b 1)
+copy /Y "%SRC%dist\ArayMinimap-Check.exe" "%ARAY%\ArayMinimap-Check.exe" >nul
+if errorlevel 1 (echo [ERRO] Copia do checker falhou.&exit /b 1)
 if not exist "%ARAY%\ArayMinimap.exe" (echo [ERRO] Instalacao incompleta.&exit /b 1)
 echo [ARAY] Concluido. Atalho F6, jogo OFFLINE. POSICAO 1.16 AINDA NAO VALIDADA.
 echo [ARAY] Pasta de dados: "%ARAY%\data"

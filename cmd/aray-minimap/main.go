@@ -3,16 +3,20 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"runtime"
 
 	"github.com/llongaray/minimap-eldenring/internal/core"
+	"github.com/llongaray/minimap-eldenring/internal/game"
 )
 
 func main() {
 	dataArg := flag.String("data", "", "Diretório de dados locais")
 	check := flag.Bool("check", false, "Verifica configurações e assets sem abrir o jogo")
+	diagnose := flag.Bool("diagnose", false, "Lê uma amostra de posição do processo para diagnóstico offline")
 	flag.Parse()
 	if runtime.GOOS != "windows" && !*check {
 		fmt.Fprintln(os.Stderr, "A interface do jogo requer Windows")
@@ -37,6 +41,15 @@ func main() {
 		}
 		dir = filepath.Join(dir, "ArayMinimap")
 	}
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		fatal(err)
+	}
+	logfile := filepath.Join(dir, "arayminimap.log")
+	if f, e := os.OpenFile(logfile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600); e == nil {
+		defer f.Close()
+		log.SetOutput(io.MultiWriter(os.Stderr, f))
+		log.Printf("Aray Minimap 0.1.0-preview.1 | system=%s | data=%s", runtime.GOOS, dir)
+	}
 	store, err := core.NewStore(filepath.Join(dir, "config.json"))
 	if err != nil {
 		fatal(err)
@@ -47,8 +60,20 @@ func main() {
 	}
 	markers, err := core.LoadMarkers(markersPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Dados do mapa indisponíveis: %v\n", err)
+		log.Printf("Dados do mapa indisponíveis: %v", err)
 		markers = nil
+	}
+	if *diagnose {
+		if runtime.GOOS != "windows" {
+			fatal(fmt.Errorf("diagnose requer Windows"))
+		}
+		reader, e := game.NewReader()
+		if e != nil {
+			fatal(e)
+		}
+		defer reader.Close()
+		fmt.Printf("BUILD: %s\nAMOSTRA: %+v\n", reader.Build(), reader.Sample())
+		return
 	}
 	if *check {
 		fmt.Printf("CONFIG_OK: %s\nMARCADORES: %d\nCAMADA: %s\n", dir, len(markers), store.Get().Layer)
@@ -58,4 +83,4 @@ func main() {
 		fatal(err)
 	}
 }
-func fatal(err error) { fmt.Fprintln(os.Stderr, "ERRO:", err); os.Exit(1) }
+func fatal(err error) { log.Printf("ERRO: %v", err); os.Exit(1) }

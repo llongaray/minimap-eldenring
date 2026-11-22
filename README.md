@@ -59,7 +59,9 @@ Se `git` não estiver instalado, obtenha-o em <https://git-scm.com/downloads/win
 # PowerShell 5.1 ou superior, em terminal de desenvolvedor VS 2022:
 go test ./...
 go build -trimpath -ldflags "-s -w -H=windowsgui" -o dist/ArayMinimap.exe ./cmd/aray-minimap
-cl /nologo /LD /O2 /GS- /Fe:dist/ArayMinimap.dll src/launcher/ArayMinimap.c
+cl /nologo /c /O2 /GS- /Fodist\ArayMinimap.obj src/launcher/ArayMinimap.c
+link /nologo /DLL /NODEFAULTLIB /ENTRY:DllMain /OUT:dist\ArayMinimap.dll dist\ArayMinimap.obj kernel32.lib
+go build -trimpath -ldflags "-s -w" -o dist/ArayMinimap-Check.exe ./cmd/aray-minimap
 ```
 
 O comando `cl` depende do ambiente MSVC ativado e pode exigir ajustes conforme a versão do Visual Studio/SDK. A CI usa Visual Studio Build Tools e registra o log da compilação.
@@ -95,6 +97,7 @@ Game/
     ├── ArayMinimap.dll          (bridge nativo)
     └── ArayMinimap/
         ├── ArayMinimap.exe      (auxiliar Win32)
+        ├── ArayMinimap-Check.exe (diagnóstico CLI)
         └── data/
             ├── config.json     (persistência própria, criada após uso)
             ├── markers.js      (opcional, obtido pelo usuário)
@@ -171,6 +174,7 @@ Os scripts removem apenas os binários do Aray Minimap. Os demais mods, o loader
 
 - **Mapa sem textura:** tiles locais PNG/JPEG ausentes. Verifique a importação de `ctiles` e a estrutura de pastas.
 - **Sem marcadores:** `markers.js`/`markers.json` ausente ou inválido na pasta `data/`.
+- **Diagnóstico da posição:** abra o jogo offline e execute `ArayMinimap-Check.exe --diagnose` no PowerShell para registrar uma amostra nativa. Consulte também `data/diagnostico-posicao.json`.
 - **Sem posição:** assinaturas não reconhecidas, leitura protegida, jogo em tela de carregamento ou calibração pendente. Isso não equivale a um bug do mapa.
 - **F6 não abre:** confirme se a DLL e o EXE foram copiados, se o EML carregou a DLL e se o executável auxiliar iniciou. Consulte `mod_loader_log.txt`.
 - **Jogo trava / perda de foco:** desligue o mod removendo exclusivamente `Game/mods/ArayMinimap.dll`, restaure o backup e informe build do jogo. Não faça depuração online.

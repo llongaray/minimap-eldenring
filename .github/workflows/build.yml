@@ -27,14 +27,36 @@ jobs:
         shell: cmd
         run: |
           if not exist dist mkdir dist
-          cl /nologo /LD /O2 /GS- /Fe:dist\ArayMinimap.dll src\launcher\ArayMinimap.c
+          cl /nologo /c /O2 /GS- /Fodist\ArayMinimap.obj src\launcher\ArayMinimap.c
+          if errorlevel 1 exit /b 1
+          link /nologo /DLL /NODEFAULTLIB /ENTRY:DllMain /OUT:dist\ArayMinimap.dll dist\ArayMinimap.obj kernel32.lib
           if errorlevel 1 exit /b 1
           go build -trimpath -ldflags="-s -w -H=windowsgui" -o dist\ArayMinimap.exe ./cmd/aray-minimap
           if errorlevel 1 exit /b 1
+          go build -trimpath -ldflags="-s -w" -o dist\ArayMinimap-Check.exe ./cmd/aray-minimap
+          if errorlevel 1 exit /b 1
+      - name: Test installation in mock game folder
+        shell: pwsh
+        run: |
+          $root=Join-Path $env:RUNNER_TEMP 'Mock Elden Ring'
+          $game=Join-Path $root 'Game'
+          New-Item -ItemType Directory -Path (Join-Path $game 'mods') -Force | Out-Null
+          [IO.File]::WriteAllText((Join-Path $game 'eldenring.exe'),'mock')
+          [IO.File]::WriteAllText((Join-Path $game 'dinput8.dll'),'loader sentinel')
+          [IO.File]::WriteAllText((Join-Path $game 'mod_loader_config.ini'),'[modloader]`nload_delay=0')
+          [IO.File]::WriteAllText((Join-Path $game 'mods/OtherMod.dll'),'other mod')
+          ./install.ps1 -GamePath $root -NoPrompt
+          if ($LASTEXITCODE -ne 0) {throw 'PowerShell install failed'}
+          if (-not (Test-Path (Join-Path $game 'mods/ArayMinimap.dll'))) {throw 'DLL missing'}
+          if (-not (Test-Path (Join-Path $game 'mods/ArayMinimap/ArayMinimap.exe'))) {throw 'EXE missing'}
+          ./uninstall.ps1 -GamePath $root -NoPrompt
+          if ($LASTEXITCODE -ne 0) {throw 'PowerShell uninstall failed'}
+          if ((Get-Content (Join-Path $game 'dinput8.dll') -Raw) -ne 'loader sentinel') {throw 'loader modified'}
+          if (-not (Test-Path (Join-Path $game 'mods/OtherMod.dll'))) {throw 'third-party mod deleted'}
       - name: Pack experimental artifacts
         shell: pwsh
         run: |
-          $items = @('dist/ArayMinimap.dll','dist/ArayMinimap.exe','install.ps1','install.cmd','uninstall.ps1','uninstall.cmd','README.md','LICENSE','scripts/import_tiles.py')
+          $items = @('dist/ArayMinimap.dll','dist/ArayMinimap.exe','dist/ArayMinimap-Check.exe','install.ps1','install.cmd','uninstall.ps1','uninstall.cmd','README.md','LICENSE','scripts/import_tiles.py')
           Compress-Archive -LiteralPath $items -DestinationPath dist/ArayMinimap-v0.1.0-preview.1-win64.zip -Force
       - uses: actions/upload-artifact@v4
         with:

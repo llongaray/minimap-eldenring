@@ -12,8 +12,10 @@ try {
  $dll=Join-Path $mods 'ArayMinimap.dll'
  $folder=Join-Path $mods 'ArayMinimap'
  $exe=Join-Path $folder 'ArayMinimap.exe'
+ $checker=Join-Path $folder 'ArayMinimap-Check.exe'
  if(Test-Path $dll){Remove-Item -LiteralPath $dll -Force;Write-Host "Removida DLL: $dll"}
  if(Test-Path $exe){Remove-Item -LiteralPath $exe -Force;Write-Host "Removido EXE: $exe"}
+ if(Test-Path $checker){Remove-Item -LiteralPath $checker -Force}
  $data=Join-Path $folder 'data'
  if($RemoveUserData -and (Test-Path $data)){
   $safe=Join-Path (Split-Path $game -Parent) ("_ArayMinimapBackups\dados-removidos-"+(Get-Date -Format 'yyyyMMdd-HHmmss'))

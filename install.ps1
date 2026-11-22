@@ -1,114 +1,90 @@
 #Requires -Version 5.1
-<#+
-.SYNOPSIS
-  Instala Aray Minimap sem substituir o Elden Mod Loader nem o save do jogo.
-.EXAMPLE
-  .\install.ps1 -GamePath 'E:\Games\ELDEN RING' -DisableMapForGoblins
-#>
+# Instala a DLL direta do Aray Minimap; preserva saves, tiles e outros mods.
 [CmdletBinding()]
 param(
- [string]$GamePath = '',
- [string]$MapSource = '',
- [switch]$DisableMapForGoblins,
- [switch]$NoPrompt
+    [string]$GamePath = '',
+    [string]$MapSource = '',
+    [switch]$DisableMapForGoblins,
+    [switch]$NoPrompt
 )
 $ErrorActionPreference = 'Stop'
-Set-StrictMode -Version Latest
-function Log([string]$text){Write-Host "[ARAY] $text";if($script:LogFile){Add-Content -LiteralPath $script:LogFile -Value "$(Get-Date -Format o) $text" -Encoding UTF8}}
-$script:LogFile = $null
+$original = @()
+$targetDll = $null
+$staging = $null
 try {
- if (-not $GamePath) {
-   if ($NoPrompt) {throw 'GamePath obrigatorio em modo nao interativo.'}
-   $GamePath = Read-Host 'Diretorio raiz do Elden Ring ou pasta Game'
- }
- if (-not (Test-Path -LiteralPath $GamePath -PathType Container)){throw "Diretorio nao existe: $GamePath"}
- $GamePath = (Resolve-Path -LiteralPath $GamePath).ProviderPath
- $game = $GamePath
- if(-not (Test-Path -LiteralPath (Join-Path $game 'eldenring.exe'))){$game=Join-Path $GamePath 'Game'}
- if(-not (Test-Path -LiteralPath (Join-Path $game 'eldenring.exe'))){throw "eldenring.exe nao encontrado em: $game"}
- if(Get-Process -Name eldenring -ErrorAction SilentlyContinue){throw 'Feche o Elden Ring antes de instalar.'}
- $loader=Join-Path $game 'dinput8.dll'
- $config=Join-Path $game 'mod_loader_config.ini'
- if(-not(Test-Path -LiteralPath $loader) -or -not(Test-Path -LiteralPath $config)){
-  throw 'Elden Mod Loader nao detectado. Instale primeiro a versao oficial de https://www.nexusmods.com/eldenring/mods/117 (dinput8.dll + config).'
- }
- $dll=Join-Path $PSScriptRoot 'dist\ArayMinimap.dll'
- $exe=Join-Path $PSScriptRoot 'dist\ArayMinimap.exe'
- $checker=Join-Path $PSScriptRoot 'dist\ArayMinimap-Check.exe'
- foreach($f in @($dll,$exe,$checker)){if(-not(Test-Path -LiteralPath $f)){throw "Binario ausente: $f"};if((Get-Item -LiteralPath $f).Length -lt 1024){throw "Arquivo invalido: $f"}}
- if($MapSource){
-   $sourceCandidate=$MapSource
-   if(Test-Path -LiteralPath $MapSource -PathType Container){$sourceCandidate=Join-Path $MapSource 'markers.js'}
-   if(-not(Test-Path -LiteralPath $sourceCandidate)){throw "Arquivo de marcadores nao encontrado: $sourceCandidate"}
- }
- $root=Split-Path -Parent $game
- $backup=Join-Path $root ("_ArayMinimapBackups\{0}" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
- New-Item -ItemType Directory -Path $backup -Force|Out-Null
- $script:LogFile=Join-Path $backup 'install.log'
- Log "Jogo: $game"
- Log "Backup: $backup"
- $mods=Join-Path $game 'mods'
- New-Item -ItemType Directory -Path $mods -Force|Out-Null
- $targetDll=Join-Path $mods 'ArayMinimap.dll'
- $targetDir=Join-Path $mods 'ArayMinimap'
- $targetExe=Join-Path $targetDir 'ArayMinimap.exe'
- $targetChecker=Join-Path $targetDir 'ArayMinimap-Check.exe'
- $targetData=Join-Path $targetDir 'data'
- $copyBackup=Join-Path $backup 'anterior'
- New-Item -ItemType Directory -Path $copyBackup -Force|Out-Null
- foreach($existing in @($targetDll,$targetExe)){
-   if(Test-Path -LiteralPath $existing){Copy-Item -LiteralPath $existing -Destination (Join-Path $copyBackup (Split-Path -Leaf $existing)) -Force;Log "Copia da versao anterior: $existing"}
- }
- if(-not(Test-Path -LiteralPath $targetDir)){New-Item -ItemType Directory -Path $targetDir -Force|Out-Null}
- if(-not(Test-Path -LiteralPath $targetData)){New-Item -ItemType Directory -Path $targetData -Force|Out-Null}
- if(-not $DisableMapForGoblins -and -not $NoPrompt -and (Test-Path -LiteralPath (Join-Path $mods 'MapForGoblins.dll'))){
-   $confirm=Read-Host 'Desativar Map for Goblins para evitar conflito? [S/n]'
-   if($confirm -eq '' -or $confirm -match '^[sSyY]'){$DisableMapForGoblins=$true}
- }
- $disabled=@()
- if($DisableMapForGoblins){
-   foreach($name in @('MapForGoblins.dll','MapForGoblins.ini')){
-     $from=Join-Path $mods $name
-     if(Test-Path -LiteralPath $from){$to=Join-Path $backup $name;Move-Item -LiteralPath $from -Destination $to -Force;$disabled+=@{from=$from;to=$to};Log "Mod anterior desativado com backup: $name"}
-   }
- }
- try {
-   # Stage copies and avoid partial replacement of binaries.
-   $stage=Join-Path $targetDir '.ArayMinimap.new.exe'
-   Copy-Item -LiteralPath $exe -Destination $stage -Force
-   if((Get-FileHash -Algorithm SHA256 -LiteralPath $stage).Hash -ne (Get-FileHash -Algorithm SHA256 -LiteralPath $exe).Hash){throw 'Hash do EXE diferente.'}
-   Copy-Item -LiteralPath $dll -Destination ($targetDll+'.new') -Force
-   if((Get-FileHash -Algorithm SHA256 -LiteralPath ($targetDll+'.new')).Hash -ne (Get-FileHash -Algorithm SHA256 -LiteralPath $dll).Hash){throw 'Hash da DLL diferente.'}
-   Move-Item -LiteralPath $stage -Destination $targetExe -Force
-   Copy-Item -LiteralPath $checker -Destination $targetChecker -Force
-   Move-Item -LiteralPath ($targetDll+'.new') -Destination $targetDll -Force
-   # The reference source is imported locally, never republished by this project.
-   if($MapSource){
-     $src=$MapSource
-     if(Test-Path -LiteralPath $MapSource -PathType Container){$src=Join-Path $MapSource 'markers.js'}
-     if(-not(Test-Path -LiteralPath $src)){throw "Arquivo de marcadores nao encontrado: $src"}
-     Copy-Item -LiteralPath $src -Destination (Join-Path $targetData 'markers.js') -Force
-     Log 'Marcadores de referencia importados localmente.'
-   }
- } catch {
-   foreach($entry in $disabled){if(Test-Path -LiteralPath $entry.to){Move-Item -LiteralPath $entry.to -Destination $entry.from -Force}}
-   foreach($name in @('ArayMinimap.dll','ArayMinimap.exe')){
-      $old=Join-Path $copyBackup $name
-      $restore=if($name -eq 'ArayMinimap.dll'){$targetDll}else{$targetExe}
-      if(Test-Path -LiteralPath $old){Copy-Item -LiteralPath $old -Destination $restore -Force}
-      elseif(Test-Path -LiteralPath $restore){Remove-Item -LiteralPath $restore -Force}
-   }
-   foreach($temp in @((Join-Path $targetDir '.ArayMinimap.new.exe'),($targetDll+'.new'))){if(Test-Path -LiteralPath $temp){Remove-Item -LiteralPath $temp -Force}}
-   throw
- }
- if(-not(Test-Path -LiteralPath $targetDll) -or -not(Test-Path -LiteralPath $targetExe)){throw 'Instalacao nao passou na validacao final.'}
- Log 'INSTALACAO CONCLUIDA. O jogo deve ser iniciado OFFLINE.'
- Log "DLL: $targetDll"
- Log "EXE: $targetExe"
- Log "Dados do mapa: $targetData"
- Write-Host 'ATENCAO: build experimental, leitura de posicao ainda nao validada no Elden Ring 1.16.' -ForegroundColor Yellow
- exit 0
+    if (-not $GamePath) {
+        if ($NoPrompt) { throw 'GamePath obrigatorio em modo nao interativo.' }
+        $GamePath = Read-Host 'Pasta raiz do Elden Ring ou Game'
+    }
+    $root = (Resolve-Path -LiteralPath $GamePath).ProviderPath
+    $game = $root
+    if (-not (Test-Path -LiteralPath (Join-Path $game 'eldenring.exe'))) { $game = Join-Path $root 'Game' }
+    if (-not (Test-Path -LiteralPath (Join-Path $game 'eldenring.exe'))) { throw 'eldenring.exe nao encontrado.' }
+    if (Get-Process -Name eldenring -ErrorAction SilentlyContinue) { throw 'Feche o Elden Ring antes de instalar.' }
+    foreach ($required in @('dinput8.dll', 'mod_loader_config.ini')) {
+        if (-not (Test-Path -LiteralPath (Join-Path $game $required))) { throw "Elden Mod Loader incompleto: $required" }
+    }
+    $dll = Join-Path $PSScriptRoot 'dist\ArayMinimap.dll'
+    if (-not (Test-Path -LiteralPath $dll)) { throw 'DLL nativa nao compilada. Baixe o artefato de CI.' }
+    if ((Get-Item -LiteralPath $dll).Length -lt 1024000) { throw 'DLL pequena demais: possivel bridge antigo. Baixe a DLL nativa.' }
+    $mods = Join-Path $game 'mods'
+    $folder = Join-Path $mods 'ArayMinimap'
+    $data = Join-Path $folder 'data'
+    New-Item -ItemType Directory -Force -Path $data | Out-Null
+    $backup = Join-Path (Split-Path -Parent $game) ("_ArayMinimapBackups\native-{0}-{1}" -f (Get-Date -Format 'yyyyMMdd-HHmmss'),[Guid]::NewGuid().ToString('N').Substring(0,8))
+    New-Item -ItemType Directory -Force -Path $backup | Out-Null
+    Write-Host "[ARAY] Backup: $backup"
+    Get-Process -Name 'ArayMinimap', 'ArayMinimap-Check' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    $targetDll = Join-Path $mods 'ArayMinimap.dll'
+    $oldFiles = @(
+        $targetDll,
+        (Join-Path $mods 'ArayMinimap.dll.disabled'),
+        (Join-Path $folder 'ArayMinimap.exe'),
+        (Join-Path $folder 'ArayMinimap-Check.exe')
+    )
+    if ($DisableMapForGoblins) {
+        $oldFiles += (Join-Path $mods 'MapForGoblins.dll')
+        $oldFiles += (Join-Path $mods 'MapForGoblins.ini')
+    } elseif (-not $NoPrompt -and (Test-Path -LiteralPath (Join-Path $mods 'MapForGoblins.dll'))) {
+        $answer = Read-Host 'Desativar Map for Goblins com backup? [S/n]'
+        if (-not $answer -or $answer -match '^[sSyY]') {
+            $oldFiles += (Join-Path $mods 'MapForGoblins.dll')
+            $oldFiles += (Join-Path $mods 'MapForGoblins.ini')
+        }
+    }
+    if ($MapSource) {
+        $markers = $MapSource
+        if (Test-Path -LiteralPath $MapSource -PathType Container) { $markers = Join-Path $MapSource 'markers.js' }
+        if (-not (Test-Path -LiteralPath $markers -PathType Leaf)) { throw "Marcadores nao encontrados: $markers" }
+    }
+    foreach ($old in $oldFiles) {
+        if (Test-Path -LiteralPath $old) {
+            $destination = Join-Path $backup (Split-Path -Leaf $old)
+            Move-Item -LiteralPath $old -Destination $destination -ErrorAction Stop
+            $original += [PSCustomObject]@{Old=$old;Backup=$destination}
+            Write-Host "[ARAY] Backup: $(Split-Path -Leaf $old)"
+        }
+    }
+    $staging = Join-Path $mods 'ArayMinimap.dll.new'
+    Copy-Item -LiteralPath $dll -Destination $staging -Force
+    if ((Get-FileHash -Algorithm SHA256 $staging).Hash -ne (Get-FileHash -Algorithm SHA256 $dll).Hash) {
+        throw 'Hash da DLL apos copia nao confere'
+    }
+    Move-Item -LiteralPath $staging -Destination $targetDll
+    if ($MapSource) {
+        Copy-Item -LiteralPath $markers -Destination (Join-Path $data 'markers.js') -Force
+    }
+    Write-Host "[ARAY] DLL direta instalada: $targetDll"
+    Write-Host "[ARAY] Nenhum executavel auxiliar requerido. Marcadores e tiles preservados em $data"
+    Write-Host '[AVISO] Build experimental: abrir offline; nao validada em jogo real.' -ForegroundColor Yellow
+    exit 0
 } catch {
- Write-Host "[ARAY][ERRO] $($_.Exception.Message)" -ForegroundColor Red
- exit 1
+    Write-Host "[ARAY][ERRO] $($_.Exception.Message)" -ForegroundColor Red
+    if ($staging -and (Test-Path -LiteralPath $staging)) { Remove-Item -LiteralPath $staging -Force -ErrorAction SilentlyContinue }
+    if ($targetDll -and (Test-Path -LiteralPath $targetDll)) { Remove-Item -LiteralPath $targetDll -Force -ErrorAction SilentlyContinue }
+    [array]::Reverse($original)
+    foreach ($old in $original) {
+        if (Test-Path -LiteralPath $old.Backup) { Move-Item -LiteralPath $old.Backup -Destination $old.Old -Force -ErrorAction SilentlyContinue }
+    }
+    exit 1
 }

@@ -61,6 +61,14 @@ var (
 	getTick          = k32.NewProc("GetTickCount64")
 	validateRect     = u32.NewProc("ValidateRect")
 	setLayered       = u32.NewProc("SetLayeredWindowAttributes")
+	screenToClient   = u32.NewProc("ScreenToClient")
+	createCompatibleDC = g32.NewProc("CreateCompatibleDC")
+	createCompatibleBitmap = g32.NewProc("CreateCompatibleBitmap")
+	deleteDC = g32.NewProc("DeleteDC")
+	bitBlt = g32.NewProc("BitBlt")
+	saveDC = g32.NewProc("SaveDC")
+	restoreDC = g32.NewProc("RestoreDC")
+	intersectClipRect = g32.NewProc("IntersectClipRect")
 )
 
 const (
@@ -165,6 +173,7 @@ type app struct {
 	lastSample        time.Time
 	lastF6            bool
 	lastActive        bool
+	miniShown         bool
 	font, fontSmall   uintptr
 	message           string
 }
@@ -238,9 +247,9 @@ func winproc(hwnd uintptr, message uint32, wparam, lparam uintptr) uintptr {
 					a.settings.Layer = core.Shadow
 					a.save()
 				case 0xBB, 0x6B:
-					a.zoom = math.Min(8, a.zoom*1.25)
+					b:=a.fullBounds(); a.zoomAt(b.X+b.W/2,b.Y+b.H/2,1.25)
 				case 0xBD, 0x6D:
-					a.zoom = math.Max(.35, a.zoom/1.25)
+					b:=a.fullBounds(); a.zoomAt(b.X+b.W/2,b.Y+b.H/2,1/1.25)
 				case 0x52:
 					a.centerX = 5248
 					a.centerY = 5248
@@ -266,11 +275,13 @@ func winproc(hwnd uintptr, message uint32, wparam, lparam uintptr) uintptr {
 			}
 			return 0
 		case wmMouseWheel:
-			if hi(wparam) > 0 {
-				a.zoom = math.Min(8, a.zoom*1.25)
-			} else {
-				a.zoom = math.Max(.35, a.zoom/1.25)
-			}
+			// HIWORD(wParam) contem um delta ASSINADO (int16).
+			// Antes, 0xFF88 era lido como positivo e ambas direcoes ampliavam.
+			delta := int16(uint16(wparam >> 16))
+			pt := point{X:int32(originInt(lparam)),Y:int32(originInt(lparam>>16))}
+			screenToClient.Call(hwnd,uintptr(unsafe.Pointer(&pt)))
+			if delta > 0 { a.zoomAt(int(pt.X),int(pt.Y),1.25) }
+			if delta < 0 { a.zoomAt(int(pt.X),int(pt.Y),1/1.25) }
 			return 0
 		case wmLButtonUp, wmRButtonUp:
 			x, y := originInt(lparam), originInt(lparam>>16)
@@ -349,6 +360,22 @@ func (a *app) click(x, y int, right bool) {
 		a.centerY = hitY
 	}
 }
+func (a *app) showMini(visible bool) {
+	if visible == a.miniShown { return }
+	if visible { showWindow.Call(a.mini, swShowNoActivate) } else { showWindow.Call(a.mini, swHide) }
+	a.miniShown = visible
+	log.Printf("HUD visibilidade alterada: %v", visible)
+}
+
+func (a *app) zoomAt(x, y int, factor float64) {
+	if factor <= 0 { return }
+	next := math.Max(.35, math.Min(8, a.zoom*factor))
+	if next == a.zoom { return }
+	b := a.fullBounds()
+	a.centerX,a.centerY = core.ZoomAt(a.centerX,a.centerY,b.X,b.Y,b.W,b.H,a.zoom,next,float64(x),float64(y))
+	a.zoom = next
+}
+
 func (a *app) openMap(open bool) {
 	a.open = open
 	if open {
@@ -528,15 +555,9 @@ func run(dir string, store *core.Store, markers []core.Marker) error {
 		if !active && a.open {
 			a.openMap(false)
 		}
-		if active {
-			if !a.open {
-				showWindow.Call(a.mini, swShowNoActivate)
-			} else {
-				showWindow.Call(a.mini, swHide)
-			}
-		} else {
-			showWindow.Call(a.mini, swHide)
-		}
+		// Somente mudar a visibilidade quando o estado variar.
+		// ShowWindow a cada 18ms causava recomposicao e piscadas.
+		a.showMini(active && !a.open)
 		f6 := keyDown(a.settings.F6Key)
 		if active && f6 && !a.lastF6 {
 			log.Printf("Atalho F6 acionado; mapaAberto=%v", !a.open)
@@ -652,6 +673,14 @@ func (a *app) drawTile(hdc uintptr, t *tile, x, y, w, h int) {
 	stretchDIB.Call(hdc, uintptr(x), uintptr(y), uintptr(w), uintptr(h), 0, 0, uintptr(t.W), uintptr(t.H), uintptr(unsafe.Pointer(&t.Pixels[0])), uintptr(unsafe.Pointer(&bi)), dibRGB, srccopy)
 }
 func (a *app) renderMap(hdc uintptr, b bounds, layer core.Layer, centerX, centerY, zoom float64, mini bool) {
+	if b.W<=0 || b.H<=0 {return}
+	// Clipar TODOS os tiles e marcadores ao painel do mapa: impedimos que
+	// o zoom invada o cabeçalho, lista de filtros e area de status.
+	clip,_,_ := saveDC.Call(hdc)
+	if clip != 0 {
+		intersectClipRect.Call(hdc,uintptr(b.X),uintptr(b.Y),uintptr(b.X+b.W),uintptr(b.Y+b.H))
+		defer restoreDC.Call(hdc,clip)
+	}
 	a.rect(hdc, b.X, b.Y, b.W, b.H, 30, 38, 36)
 	if len(a.markers) == 0 {
 		a.text(hdc, b.X+8, b.Y+12, "Sem marcadores; importe markers.js", 218, 195, 141, true)
@@ -767,13 +796,28 @@ func (a *app) playerArrow(hdc uintptr, x, y int, heading float64) {
 	selectObject.Call(hdc, old)
 	deleteObject.Call(brush)
 }
+// drawBuffered desenha um frame inteiro em um DC de memoria e publica via BitBlt.
+// Evita o flash entre apagar o fundo e renderizar dezenas de tiles GDI.
+func (a *app) drawBuffered(hwnd uintptr,w,h int,paint func(uintptr)) {
+	if w<=0 || h<=0 { return }
+	dc,_,_:=getDC.Call(hwnd)
+	if dc==0 { return }
+	defer releaseDC.Call(hwnd,dc)
+	mem,_,_:=createCompatibleDC.Call(dc)
+	if mem==0 { paint(dc); return }
+	defer deleteDC.Call(mem)
+	bmp,_,_:=createCompatibleBitmap.Call(dc,uintptr(w),uintptr(h))
+	if bmp==0 { paint(dc); return }
+	defer deleteObject.Call(bmp)
+	old,_,_:=selectObject.Call(mem,bmp)
+	if old==0 { paint(dc); return }
+	defer selectObject.Call(mem,old)
+	paint(mem)
+	bitBlt.Call(dc,0,0,uintptr(w),uintptr(h),mem,0,0,srccopy)
+}
 func (a *app) drawMini() {
-	hdc, _, _ := getDC.Call(a.mini)
-	if hdc == 0 {
-		return
-	}
-	defer releaseDC.Call(a.mini, hdc)
 	s := a.settings.Size
+	a.drawBuffered(a.mini,s,s,func(hdc uintptr){
 	a.rect(hdc, 0, 0, s, s, 12, 18, 20)
 	a.rect(hdc, 3, 3, s-6, s-6, 49, 56, 49)
 	a.text(hdc, 14, 6, "ARAY MINIMAP", 234, 200, 124, true)
@@ -790,14 +834,11 @@ func (a *app) drawMini() {
 	}
 	a.rect(hdc, 3, s-20, s-6, 18, 17, 24, 24)
 	a.text(hdc, 10, s-20, msg, 233, 226, 204, true)
+	})
 }
 func (a *app) drawFull() {
-	hdc, _, _ := getDC.Call(a.full)
-	if hdc == 0 {
-		return
-	}
-	defer releaseDC.Call(a.full, hdc)
 	w, h := a.screenW, a.screenH
+	a.drawBuffered(a.full,w,h,func(hdc uintptr){
 	a.rect(hdc, 0, 0, w, h, 16, 21, 22)
 	a.rect(hdc, 0, 0, w, 78, 33, 40, 36)
 	a.text(hdc, 24, 15, "ARAY MINIMAP  |  Mapa interativo", 235, 203, 145, false)
@@ -831,6 +872,7 @@ func (a *app) drawFull() {
 	} else if a.search != "" {
 		a.text(hdc, 285, 88, "Filtro: "+a.search, 255, 215, 141, true)
 	}
+	})
 }
 
 func saveDiagnostics(dir string, status game.RawSample) error {

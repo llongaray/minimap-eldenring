@@ -26,6 +26,11 @@ ARAY_IMPORT HANDLE WINAPI CreateThread(void*,SIZE_T,LPTHREAD_START_ROUTINE,void*
 ARAY_IMPORT BOOL WINAPI CloseHandle(HANDLE);
 ARAY_IMPORT BOOL WINAPI CreateProcessW(const WCHAR*,WCHAR*,void*,void*,BOOL,DWORD,void*,const WCHAR*,STARTUPINFOW*,PROCESS_INFORMATION*);
 
+// Explicit volatile stores keep the MSVC optimizer from synthesizing implicit
+// CRT memcpy calls. The loader must be standalone and have no CRT lifecycle.
+static void aray_clear(volatile unsigned char* p, SIZE_T n){
+ for(SIZE_T j=0;j<n;++j)p[j]=0;
+}
 static WCHAR module_path[32768], exe_path[32768], command[32768];
 static DWORD WINAPI launch_worker(void* module){
  DWORD len=GetModuleFileNameW((HMODULE)module,module_path,32768);
@@ -37,15 +42,18 @@ static DWORD WINAPI launch_worker(void* module){
  // String building without any C runtime dependency.
  static const WCHAR suffix[]={ 'A','r','a','y','M','i','n','i','m','a','p','\\','A','r','a','y','M','i','n','i','m','a','p','.','e','x','e',0};
  DWORD i=0;
- for(i=0;i<sep;i++)exe_path[i]=module_path[i];
+ for(i=0;i<sep;i++)((volatile WCHAR*)exe_path)[i]=module_path[i];
  for(DWORD j=0;suffix[j];j++)exe_path[i++]=suffix[j];
  exe_path[i]=0;
  // Quoted executable path; the helper derives its data directory from the
  // companion location and does not depend on the working directory.
  DWORD k=0;command[k++]='"';
- for(DWORD j=0;j<i;j++)command[k++]=exe_path[j];
+ for(DWORD j=0;j<i;j++)((volatile WCHAR*)command)[k++]=exe_path[j];
  command[k++]='"';command[k]=0;
- STARTUPINFOW si={0};PROCESS_INFORMATION pi={0};si.cb=(DWORD)sizeof(si);
+ STARTUPINFOW si;PROCESS_INFORMATION pi;
+ aray_clear((volatile unsigned char*)&si,(SIZE_T)sizeof(si));
+ aray_clear((volatile unsigned char*)&pi,(SIZE_T)sizeof(pi));
+ si.cb=(DWORD)sizeof(si);
  if(!CreateProcessW(exe_path,command,NULL,NULL,0,0x08000000,NULL,NULL,&si,&pi))return 3;
  CloseHandle(pi.hThread);CloseHandle(pi.hProcess);
  return 0;

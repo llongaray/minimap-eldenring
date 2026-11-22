@@ -21,20 +21,23 @@ jobs:
         run: |
           go test ./...
           go vet ./...
-      - name: Configure MSVC
-        uses: ilammy/msvc-dev-cmd@v1
-      - name: Build Win32 launcher DLL and app
-        shell: cmd
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: mingw-w64-ucrt-x86_64-gcc
+      - name: Build single in-process DLL with Go c-shared
+        shell: pwsh
         run: |
-          if not exist dist mkdir dist
-          cl /nologo /c /Od /Oi- /GS- /Fodist\ArayMinimap.obj src\launcher\ArayMinimap.c
-          if errorlevel 1 exit /b 1
-          link /nologo /DLL /NODEFAULTLIB /ENTRY:DllMain /OUT:dist\ArayMinimap.dll dist\ArayMinimap.obj kernel32.lib
-          if errorlevel 1 exit /b 1
-          go build -trimpath -ldflags="-s -w -H=windowsgui" -o dist\ArayMinimap.exe ./cmd/aray-minimap
-          if errorlevel 1 exit /b 1
-          go build -trimpath -ldflags="-s -w" -o dist\ArayMinimap-Check.exe ./cmd/aray-minimap
-          if errorlevel 1 exit /b 1
+          New-Item -ItemType Directory -Path dist -Force | Out-Null
+          $env:CGO_ENABLED='1'
+          $env:CC='C:\msys64\ucrt64\bin\gcc.exe'
+          & $env:CC --version
+          go build -trimpath -tags araydll -buildmode=c-shared -ldflags '-s -w' -o dist/ArayMinimap.dll ./cmd/aray-minimap
+          if ($LASTEXITCODE -ne 0) { throw 'A compilacao direta DLL falhou' }
+          if ((Get-Item dist/ArayMinimap.dll).Length -lt 1024000) { throw 'DLL Go inesperadamente pequena' }
+          if (Get-Process -Name ArayMinimap -ErrorAction SilentlyContinue) { throw 'DLL tentou iniciar executavel auxiliar' }
+          Write-Host 'DLL Go compilada e validada'
       - name: Test installation in mock game folder
         shell: pwsh
         run: |
@@ -48,19 +51,19 @@ jobs:
           ./install.ps1 -GamePath $root -NoPrompt
           if ($LASTEXITCODE -ne 0) {throw 'PowerShell install failed'}
           if (-not (Test-Path (Join-Path $game 'mods/ArayMinimap.dll'))) {throw 'DLL missing'}
-          if (-not (Test-Path (Join-Path $game 'mods/ArayMinimap/ArayMinimap.exe'))) {throw 'EXE missing'}
+          if (Test-Path (Join-Path $game 'mods/ArayMinimap/ArayMinimap.exe')) {throw 'Legacy EXE must not be installed'}
           ./uninstall.ps1 -GamePath $root -NoPrompt
           if ($LASTEXITCODE -ne 0) {throw 'PowerShell uninstall failed'}
           if ((Get-Content (Join-Path $game 'dinput8.dll') -Raw) -ne 'loader sentinel') {throw 'loader modified'}
           if (-not (Test-Path (Join-Path $game 'mods/OtherMod.dll'))) {throw 'third-party mod deleted'}
-      - name: Pack experimental artifacts
+      - name: Pack native DLL preview
         shell: pwsh
         run: |
-          $items = @('dist/ArayMinimap.dll','dist/ArayMinimap.exe','dist/ArayMinimap-Check.exe','install.ps1','install.cmd','uninstall.ps1','uninstall.cmd','README.md','LICENSE','scripts/import_tiles.py')
-          Compress-Archive -LiteralPath $items -DestinationPath dist/ArayMinimap-v0.1.0-preview.1-win64.zip -Force
+          $items=@('dist/ArayMinimap.dll','dist/ArayMinimap.h','install.ps1','install.cmd','uninstall.ps1','uninstall.cmd','README.md','LICENSE','scripts/import_tiles.py')
+          Compress-Archive -LiteralPath $items -DestinationPath dist/ArayMinimap-v0.2.0-preview.2-win64.zip -Force
       - uses: actions/upload-artifact@v4
         with:
-          name: ArayMinimap-win64-preview
-          path: dist/ArayMinimap-v0.1.0-preview.1-win64.zip
+          name: ArayMinimap-native-dll-preview
+          path: dist/ArayMinimap-v0.2.0-preview.2-win64.zip
           if-no-files-found: error
           retention-days: 14

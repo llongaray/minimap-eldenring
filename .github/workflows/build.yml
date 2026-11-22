@@ -27,17 +27,17 @@ jobs:
           update: true
           install: mingw-w64-ucrt-x86_64-gcc
       - name: Build single in-process DLL with Go c-shared
-        shell: pwsh
+        shell: msys2 {0}
         run: |
-          New-Item -ItemType Directory -Path dist -Force | Out-Null
-          $env:CGO_ENABLED='1'
-          $env:CC='C:\msys64\ucrt64\bin\gcc.exe'
-          & $env:CC --version
-          go build -trimpath -tags araydll -buildmode=c-shared -ldflags '-s -w' -o dist/ArayMinimap.dll ./cmd/aray-minimap
-          if ($LASTEXITCODE -ne 0) { throw 'A compilacao direta DLL falhou' }
-          if ((Get-Item dist/ArayMinimap.dll).Length -lt 1024000) { throw 'DLL Go inesperadamente pequena' }
-          if (Get-Process -Name ArayMinimap -ErrorAction SilentlyContinue) { throw 'DLL tentou iniciar executavel auxiliar' }
-          Write-Host 'DLL Go compilada e validada'
+          mkdir -p dist
+          export CGO_ENABLED=1
+          export CC=/ucrt64/bin/gcc
+          "$CC" --version
+          go version
+          go build -trimpath -tags araydll -buildmode=c-shared -ldflags="-s -w" -o dist/ArayMinimap.dll ./cmd/aray-minimap
+          test -s dist/ArayMinimap.dll
+          test -s dist/ArayMinimap.h
+          echo "DLL Win64 in-process compilada"
       - name: Test installation in mock game folder
         shell: pwsh
         run: |

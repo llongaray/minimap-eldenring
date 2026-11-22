@@ -9,6 +9,7 @@ if not exist "%GAME%\eldenring.exe" (echo [ERRO] eldenring.exe nao encontrado.&e
 if not exist "%GAME%\dinput8.dll" (echo [ERRO] Elden Mod Loader ausente.&exit /b 1)
 if not exist "%GAME%\mod_loader_config.ini" (echo [ERRO] mod_loader_config.ini ausente.&exit /b 1)
 if not exist "%~dp0dist\ArayMinimap.dll" (echo [ERRO] DLL nativa ausente em dist. Baixe o artefato do GitHub Actions.&exit /b 1)
+for %%F in ("%~dp0dist\ArayMinimap.dll") do if %%~zF LSS 1024000 (echo [ERRO] DLL antiga detectada ^(menos de 1 MB^). Baixe a DLL nativa nova do Actions.&exit /b 1)
 tasklist /FI "IMAGENAME eq eldenring.exe" | findstr /I /C:"eldenring.exe" >nul
 if not errorlevel 1 (echo [ERRO] Feche o jogo antes de instalar.&exit /b 1)
 set "MODS=%GAME%\mods"

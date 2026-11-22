@@ -26,13 +26,6 @@ ARAY_IMPORT HANDLE WINAPI CreateThread(void*,SIZE_T,LPTHREAD_START_ROUTINE,void*
 ARAY_IMPORT BOOL WINAPI CloseHandle(HANDLE);
 ARAY_IMPORT BOOL WINAPI CreateProcessW(const WCHAR*,WCHAR*,void*,void*,BOOL,DWORD,void*,const WCHAR*,STARTUPINFOW*,PROCESS_INFORMATION*);
 
-/* Avoid linking the CRT. The compiler may emit memcpy for POD zero-inits. */
-void *memcpy(void *dest, const void *src, SIZE_T size){
- volatile unsigned char *d=(volatile unsigned char*)dest;
- const volatile unsigned char *s=(const volatile unsigned char*)src;
- for(SIZE_T i=0;i<size;i++)d[i]=s[i];
- return dest;
-}
 static WCHAR module_path[32768], exe_path[32768], command[32768];
 static DWORD WINAPI launch_worker(void* module){
  DWORD len=GetModuleFileNameW((HMODULE)module,module_path,32768);

@@ -59,8 +59,8 @@ Se `git` não estiver instalado, obtenha-o em <https://git-scm.com/downloads/win
 # PowerShell 5.1 ou superior, em terminal de desenvolvedor VS 2022:
 go test ./...
 go build -trimpath -ldflags "-s -w -H=windowsgui" -o dist/ArayMinimap.exe ./cmd/aray-minimap
-cl /nologo /c /O2 /GS- /Fodist\ArayMinimap.obj src/launcher/ArayMinimap.c
-link /nologo /DLL /NODEFAULTLIB /ENTRY:DllMain /OUT:dist\ArayMinimap.dll dist\ArayMinimap.obj kernel32.lib
+cl /nologo /c /O2 /GS- /MT /Fodist\ArayMinimap.obj src/launcher/ArayMinimap.c
+link /nologo /DLL /ENTRY:DllMain /OUT:dist\ArayMinimap.dll dist\ArayMinimap.obj kernel32.lib
 go build -trimpath -ldflags "-s -w" -o dist/ArayMinimap-Check.exe ./cmd/aray-minimap
 ```
 

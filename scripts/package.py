@@ -24,7 +24,7 @@ with zipfile.ZipFile(RELEASE,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=
 assert zipfile.ZipFile(RELEASE).testzip() is None
 with zipfile.ZipFile(SOURCES,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=6) as z:
  for file in ROOT.rglob('*'):
-  if not file.is_file() or any(p in ('dist','build','__pycache__') for p in file.relative_to(ROOT).parts):continue
+  if (not file.is_file() or any(p in ('dist','build','__pycache__','testdata-empty') for p in file.relative_to(ROOT).parts) or file.name.startswith(('github_manifest','manifest_'))):continue
   z.write(file,arcname='ArayMinimap/'+file.relative_to(ROOT).as_posix())
 assert zipfile.ZipFile(SOURCES).testzip() is None
 print('Preview:',RELEASE,RELEASE.stat().st_size,'bytes')

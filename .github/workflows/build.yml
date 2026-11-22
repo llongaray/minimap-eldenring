@@ -27,9 +27,9 @@ jobs:
         shell: cmd
         run: |
           if not exist dist mkdir dist
-          cl /nologo /c /O2 /GS- /Fodist\ArayMinimap.obj src\launcher\ArayMinimap.c
+          cl /nologo /c /O2 /GS- /MT /Fodist\ArayMinimap.obj src\launcher\ArayMinimap.c
           if errorlevel 1 exit /b 1
-          link /nologo /DLL /NODEFAULTLIB /ENTRY:DllMain /OUT:dist\ArayMinimap.dll dist\ArayMinimap.obj kernel32.lib
+          link /nologo /DLL /ENTRY:DllMain /OUT:dist\ArayMinimap.dll dist\ArayMinimap.obj kernel32.lib
           if errorlevel 1 exit /b 1
           go build -trimpath -ldflags="-s -w -H=windowsgui" -o dist\ArayMinimap.exe ./cmd/aray-minimap
           if errorlevel 1 exit /b 1

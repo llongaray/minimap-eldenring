@@ -25,7 +25,8 @@ C
 clang-cl /nologo /c /GS- /Fo:build/kernel32-stubs.obj build/kernel32-stubs.c
 lld-link /nologo /nodefaultlib /dll /machine:x64 /subsystem:windows /noentry /def:build/kernel32.def /implib:build/kernel32.lib /out:build/kernel32-fake.dll build/kernel32-stubs.obj
 clang-cl /nologo /c /GS- /O2 /Fo:build/ArayMinimap.obj src/launcher/ArayMinimap.c
-lld-link /nologo /nodefaultlib /dll /machine:x64 /subsystem:windows /entry:DllMain /out:dist/ArayMinimap.dll build/ArayMinimap.obj build/kernel32.lib
+clang-cl /nologo /c /GS- /Oi- /Fo:build/cross-memcpy.obj scripts/cross-memcpy.c
+lld-link /nologo /nodefaultlib /dll /machine:x64 /subsystem:windows /entry:DllMain /out:dist/ArayMinimap.dll build/ArayMinimap.obj build/cross-memcpy.obj build/kernel32.lib
 GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags='-s -w -H=windowsgui' -o dist/ArayMinimap.exe ./cmd/aray-minimap
 go test ./...
 GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build ./...

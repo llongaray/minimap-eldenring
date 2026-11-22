@@ -1,9 +1,7 @@
 //go:build windows && araydll
 
 // SPDX-License-Identifier: GPL-3.0-only
-// Aray Minimap: DLL Go carregada diretamente pelo Elden Mod Loader.
-// O bootstrap segue o modelo de inicializacao validado no TarnishedAtlas
-// (GPLv3), sem executar processos auxiliares.
+// DLL nativa carregada pelo Elden Mod Loader, sem executavel auxiliar.
 package main
 
 /*
@@ -24,46 +22,87 @@ import (
     "github.com/llongaray/minimap-eldenring/internal/core"
 )
 
+// bootstrapTrace nao depende da configuracao, dos assets ou da pasta do jogo.
+// Por isso registra erros que antes ficavam silenciosos no eldenring.exe.
+// Log: %TEMP%\ArayMinimap-bootstrap.log
+func bootstrapTrace(message string) {
+    logPath := filepath.Join(os.TempDir(), "ArayMinimap-bootstrap.log")
+    f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+    if err == nil {
+        defer f.Close()
+        fmt.Fprintf(f, "%s | PID=%d | %s\n", time.Now().Format(time.RFC3339Nano), os.Getpid(), message)
+    }
+}
+
 func init() {
     insideGameDLL = true
-    // Inicia somente depois do carregamento do runtime Go. Nao inicia EXE
-    // nem intercepta teclado, DirectX ou modifica memoria do jogo.
+    bootstrapTrace("init() iniciado - runtime Go operacional")
+    // A rotina complexa roda fora da inicializacao da DLL. Nao cria outro processo.
     go nativeDLLStartup()
 }
 
 //export ArayMinimapInterfaceVersion
-func ArayMinimapInterfaceVersion() C.int { return 2 }
+func ArayMinimapInterfaceVersion() C.int { return 3 }
 
 func nativeDLLStartup() {
+    bootstrapTrace("nativeDLLStartup() iniciado")
     defer func() {
-        if e := recover(); e != nil {
-            dllLogError(fmt.Errorf("panic no minimapa: %v\n%s", e, debug.Stack()))
+        if r := recover(); r != nil {
+            msg := fmt.Sprintf("PANIC: %v\n%s", r, debug.Stack())
+            bootstrapTrace(msg)
+            log.Printf("[ARAY DLL] %s", msg)
         }
     }()
-    // Permite que o Elden Mod Loader conclua o carregamento da DLL.
+
+    // Dar tempo ao loader de retornar de LoadLibrary, sem depender disso
+    // para registrar os eventos de inicializacao.
     time.Sleep(1500 * time.Millisecond)
     exe, err := os.Executable()
-    if err != nil { dllLogError(err); return }
-    if !strings.EqualFold(filepath.Base(exe), "eldenring.exe") { return }
-    dataDir := filepath.Join(filepath.Dir(exe), "mods", "ArayMinimap", "data")
-    if err := os.MkdirAll(dataDir, 0700); err != nil { dllLogError(err); return }
-    if f, err := os.OpenFile(filepath.Join(dataDir, "arayminimap.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600); err == nil {
-        defer f.Close()
-        // Log isolado: nao altera o logger de terceiros que compartilhem processo.
-        log.SetOutput(io.MultiWriter(os.Stderr, f))
+    bootstrapTrace(fmt.Sprintf("os.Executable(): %q | erro: %v", exe, err))
+    if err != nil {
+        bootstrapTrace("ABORTADO: caminho do processo nao foi identificado")
+        return
     }
-    log.Printf("Aray Minimap DLL direta | jogo=%s | dados=%s", exe, dataDir)
-    store, err := core.NewStore(filepath.Join(dataDir, "config.json"))
-    if err != nil { dllLogError(err); return }
-    path := filepath.Join(dataDir, "markers.json")
-    if _, err := os.Stat(path); os.IsNotExist(err) { path = filepath.Join(dataDir, "markers.js") }
-    markers, err := core.LoadMarkers(path)
-    if err != nil { log.Printf("Marcadores indisponiveis: %v", err) }
-    log.Printf("Inicializando janelas Win32 dentro do jogo | marcadores=%d", len(markers))
-    if err := run(dataDir, store, markers); err != nil { dllLogError(err); return }
-    log.Printf("Janela Win32 encerrada")
-}
+    if !strings.EqualFold(filepath.Base(exe), "eldenring.exe") {
+        bootstrapTrace("ABORTADO: processo nao e eldenring.exe")
+        return
+    }
+    dataDir := filepath.Join(filepath.Dir(exe), "mods", "ArayMinimap", "data")
+    bootstrapTrace("Diretorio de dados: " + dataDir)
+    if err := os.MkdirAll(dataDir, 0700); err != nil {
+        bootstrapTrace(fmt.Sprintf("ABORTADO: falha MkdirAll: %v", err))
+        return
+    }
+    f, err := os.OpenFile(filepath.Join(dataDir, "arayminimap.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+    if err != nil {
+        bootstrapTrace(fmt.Sprintf("ABORTADO: falha ao abrir log principal: %v", err))
+        return
+    }
+    defer f.Close()
+    log.SetOutput(io.MultiWriter(os.Stderr, f))
+    bootstrapTrace("Log principal aberto com sucesso")
+    log.Printf("Aray Minimap DLL direta diagnosticada | jogo=%s | dados=%s", exe, dataDir)
 
-func dllLogError(err error) {
-    log.Printf("[ARAY DLL][ERRO] %v", err)
+    store, err := core.NewStore(filepath.Join(dataDir, "config.json"))
+    if err != nil {
+        bootstrapTrace(fmt.Sprintf("ABORTADO: falha configuracao: %v", err))
+        log.Printf("[ARAY DLL][ERRO] %v", err)
+        return
+    }
+    markersPath := filepath.Join(dataDir, "markers.json")
+    if _, err := os.Stat(markersPath); os.IsNotExist(err) {
+        markersPath = filepath.Join(dataDir, "markers.js")
+    }
+    markers, err := core.LoadMarkers(markersPath)
+    if err != nil {
+        bootstrapTrace(fmt.Sprintf("Marcadores indisponiveis: %v", err))
+        log.Printf("Marcadores indisponiveis: %v", err)
+    }
+    bootstrapTrace(fmt.Sprintf("Iniciando Win32, marcadores=%d", len(markers)))
+    if err := run(dataDir, store, markers); err != nil {
+        bootstrapTrace(fmt.Sprintf("ABORTADO: run Win32 retornou erro: %v", err))
+        log.Printf("[ARAY DLL][ERRO] %v", err)
+        return
+    }
+    bootstrapTrace("run Win32 terminou")
 }

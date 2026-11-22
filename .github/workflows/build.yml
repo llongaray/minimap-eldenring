@@ -49,6 +49,7 @@ jobs:
         shell: msys2 {0}
         run: |
           /ucrt64/bin/gcc.exe -O2 -Wall -Wextra -o dist/eldenring.exe tests/windows_dll_host.c
+          /ucrt64/bin/gcc.exe -O2 -Wall -Wextra -mwindows -o dist/eldenring-gui.exe tests/windows_dll_host.c
       - name: Smoke-test LoadLibrary and Go init in native Windows process
         shell: pwsh
         run: |
@@ -71,6 +72,24 @@ jobs:
           $bootText=Get-Content -LiteralPath $bootstrap -Raw
           Write-Host $bootText
           if ($bootText -notmatch 'init\(\) iniciado' -or $bootText -notmatch 'Log principal aberto') { throw 'Trajetoria completa de bootstrap ausente' }
+      - name: Smoke-test DLL with GUI host without terminal
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=Join-Path $env:RUNNER_TEMP 'DllLoadSmokeNoConsole'
+          $game=Join-Path $root 'Game'
+          $mods=Join-Path $game 'mods'
+          New-Item -ItemType Directory -Path $mods -Force | Out-Null
+          Copy-Item dist/eldenring-gui.exe (Join-Path $game 'eldenring.exe')
+          Copy-Item dist/ArayMinimap.dll (Join-Path $mods 'ArayMinimap.dll')
+          $p=Start-Process -FilePath (Join-Path $game 'eldenring.exe') -WorkingDirectory $game -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "LoadLibrary GUI host failed: exit code $($p.ExitCode)" }
+          $log=Join-Path $mods 'ArayMinimap/data/arayminimap.log'
+          if (-not (Test-Path -LiteralPath $log)) { throw 'DLL nao criou log dentro do processo GUI sem console' }
+          $txt=Get-Content -LiteralPath $log -Raw
+          Write-Host $txt
+          if ($txt -notmatch 'Aray Minimap DLL direta diagnosticada') { throw 'Inicializacao grafica nao foi concluida' }
+          if ($txt -notmatch 'Janelas criadas:') { throw 'A interface Win32 nao criou suas janelas' }
       - name: Test installation in mock game folder
         shell: pwsh
         run: |

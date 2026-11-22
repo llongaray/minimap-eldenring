@@ -45,6 +45,27 @@ jobs:
           test -s dist/ArayMinimap.dll
           test -s dist/ArayMinimap.h
           echo "DLL Win64 in-process compilada"
+      - name: Compile Windows DLL loading smoke test
+        shell: msys2 {0}
+        run: |
+          /ucrt64/bin/gcc.exe -O2 -Wall -Wextra -o dist/eldenring.exe tests/windows_dll_host.c
+      - name: Smoke-test LoadLibrary and Go init in native Windows process
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=Join-Path $env:RUNNER_TEMP 'DllLoadSmoke'
+          $game=Join-Path $root 'Game'
+          $mods=Join-Path $game 'mods'
+          New-Item -ItemType Directory -Path $mods -Force | Out-Null
+          Copy-Item dist/eldenring.exe (Join-Path $game 'eldenring.exe')
+          Copy-Item dist/ArayMinimap.dll (Join-Path $mods 'ArayMinimap.dll')
+          $p=Start-Process -FilePath (Join-Path $game 'eldenring.exe') -WorkingDirectory $game -NoNewWindow -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "LoadLibrary smoke test failed: exit code $($p.ExitCode)" }
+          $log=Join-Path $mods 'ArayMinimap/data/arayminimap.log'
+          if (-not (Test-Path -LiteralPath $log)) { throw 'Go DLL startup nao executou: log nao foi criado' }
+          $txt=Get-Content -LiteralPath $log -Raw
+          Write-Host $txt
+          if ($txt -notmatch 'Aray Minimap DLL direta') { throw 'Bootstrap da DLL nao foi executado' }
       - name: Test installation in mock game folder
         shell: pwsh
         run: |

@@ -3,7 +3,7 @@
 ![Licença GPLv3](https://img.shields.io/badge/license-GPL--3.0-blue)
 ![Build Windows](https://github.com/llongaray/minimap-eldenring/actions/workflows/build.yml/badge.svg)
 
-**Estado: v0.2.1-preview.3, experimental. A integração no Elden Ring 1.16 ainda exige teste manual.**
+**Estado: v0.2.2-preview.4, experimental. A integração no Elden Ring 1.16 ainda exige teste manual.**
 
 Minimapa e mapa detalhado F6 em **português brasileiro**. Projeto próprio, sem execução de ArayMinimap.exe, sem Map for Goblins e sem modificar o TarnishedAtlas.
 
@@ -55,9 +55,9 @@ gh run list -R llongaray/minimap-eldenring --limit 5
 Identifique a última execução de CI bem-sucedida após o commit da DLL nativa (v0.2). Substitua **RUN_ID** pelo número real:
 
 ```cmd
-gh run download RUN_ID -R llongaray/minimap-eldenring -n ArayMinimap-native-dll-diagnostic -D "_ci"
+gh run download RUN_ID -R llongaray/minimap-eldenring -n ArayMinimap-native-dll-async-hud -D "_ci"
 mkdir "_ci\extraido"
-tar -xf "_ci\ArayMinimap-v0.2.1-preview.3-win64.zip" -C "_ci\extraido"
+tar -xf "_ci\ArayMinimap-v0.2.2-preview.4-win64.zip" -C "_ci\extraido"
 if not exist "dist" mkdir "dist"
 for /r "_ci\extraido" %F in (ArayMinimap.dll) do @copy /Y "%F" "dist\"
 install.cmd "E:\Games\ELDEN RING"
@@ -113,7 +113,7 @@ Os registros da DLL são gravados em:
 Game/mods/ArayMinimap/data/arayminimap.log
 ```
 
-O log registra início da DLL, criação de janelas, estados de foco e tecla F6. A DLL tambem registra um log de bootstrap independente em `%TEMP%\\ArayMinimap-bootstrap.log`, antes de acessar os arquivos do jogo. Consulte esse arquivo quando o mod estiver carregado mas o HUD/F6 não funcionarem.
+O log registra início da DLL, criação de janelas, estados de foco e tecla F6. A leitura de memoria e inicializada de forma assincrona para nao bloquear o loop Win32 da interface e a tecla F6. Um heartbeat a cada 5 segundos registra PID/foco, visibilidade da janela e estado do leitor. O primeiro desenho e cronometrado no log.\n\nA DLL tambem registra um log de bootstrap independente em `%TEMP%\\ArayMinimap-bootstrap.log`, antes de acessar os arquivos do jogo. Consulte esse arquivo quando o mod estiver carregado mas o HUD/F6 não funcionarem.
 
 ```cmd
 type "%TEMP%\\ArayMinimap-bootstrap.log"
@@ -140,7 +140,7 @@ set GOARCH=amd64
 go build -trimpath -tags araydll -buildmode=c-shared -ldflags="-s -w" -o dist\ArayMinimap.dll .\cmd\aray-minimap
 ```
 
-O GitHub Actions usa MSYS2 UCRT64 no Windows e publica somente `ArayMinimap-native-dll-diagnostic`, sem release estável até validação no jogo. O antigo bridge em C e o executável auxiliar não fazem mais parte do processo de build.
+O GitHub Actions usa MSYS2 UCRT64 no Windows e publica somente `ArayMinimap-native-dll-async-hud`, sem release estável até validação no jogo. O antigo bridge em C e o executável auxiliar não fazem mais parte do processo de build.
 
 ## Desinstalação
 

@@ -68,6 +68,8 @@ type Calibration struct {
 	// The game-reported point is transformed as masterX = ScaleX*x + OffsetX.
 	// Calibration is NOT enabled until independently verified in this game build.
 	Enabled bool    `json:"enabled"`
+	Layer   Layer   `json:"layer,omitempty"`
+	Anchors int     `json:"anchors,omitempty"`
 	ScaleX  float64 `json:"scale_x"`
 	ScaleY  float64 `json:"scale_y"`
 	OffsetX float64 `json:"offset_x"`
@@ -78,10 +80,15 @@ func (c Calibration) Apply(x, y float64, layer Layer, heading float64) (Point, e
 	if !c.Enabled {
 		return Point{}, errors.New("calibração de coordenadas pendente")
 	}
+	if c.Layer != "" && c.Layer != layer {
+		return Point{}, errors.New("calibração válida somente para a camada "+string(c.Layer))
+	}
 	if !finite(c.ScaleX) || !finite(c.ScaleY) || c.ScaleX == 0 || c.ScaleY == 0 {
 		return Point{}, errors.New("escala inválida")
 	}
-	p := Point{X: c.ScaleX*x + c.OffsetX, Y: c.ScaleY*y + c.OffsetY, Layer: layer, Heading: heading, Source: "live"}
+	source := "live"
+	if c.Anchors == 1 { source = "calibracao-provisoria" }
+	p := Point{X: c.ScaleX*x + c.OffsetX, Y: c.ScaleY*y + c.OffsetY, Layer: layer, Heading: heading, Source: source}
 	return p, p.Validate()
 }
 

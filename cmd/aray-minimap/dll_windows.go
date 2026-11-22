@@ -25,6 +25,7 @@ import (
 )
 
 func init() {
+    insideGameDLL = true
     // Inicia somente depois do carregamento do runtime Go. Nao inicia EXE
     // nem intercepta teclado, DirectX ou modifica memoria do jogo.
     go nativeDLLStartup()

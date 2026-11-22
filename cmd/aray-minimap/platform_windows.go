@@ -428,16 +428,20 @@ func run(dir string, store *core.Store, markers []core.Marker) error {
 	lastHeartbeat := time.Time{}
 	firstDraw := false
 	log.Printf("Loop Win32 iniciado: HUD pronto para exibicao antes da leitura de memoria")
+	firstPump := true
 	for {
+		// Limitar a drenagem por ciclo: a fila Win32 pode receber mensagens
+		// continuamente; nunca deixar HUD e F6 sem CPU por causa disso.
+		if firstPump { log.Printf("Primeira passagem: antes de PeekMessageW") }
 		var m msg
-		for {
+		dispatched := 0
+		for ; dispatched < 32; dispatched++ {
 			found, _, _ := peekMessage.Call(uintptr(unsafe.Pointer(&m)), 0, 0, 0, pmRemove)
-			if found == 0 {
-				break
-			}
+			if found == 0 { break }
 			translateMessage.Call(uintptr(unsafe.Pointer(&m)))
 			dispatchMessage.Call(uintptr(unsafe.Pointer(&m)))
 		}
+		if firstPump { log.Printf("Primeira passagem: PeekMessageW concluiu, mensagens=%d", dispatched); firstPump = false }
 		now := time.Now()
 		// Nunca bloquear o loop de mensagens Win32 para procurar assinaturas.
 		// O jogo pode ter dezenas de MB de codigo para verificar.

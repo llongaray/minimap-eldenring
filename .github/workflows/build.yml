@@ -26,12 +26,19 @@ jobs:
           msystem: UCRT64
           update: true
           install: mingw-w64-ucrt-x86_64-gcc
+      - name: Locate Go binary for the MSYS2 build shell
+        shell: pwsh
+        run: |
+          $go = (Get-Command go.exe).Source
+          if (-not (Test-Path -LiteralPath $go)) { throw 'Go nao encontrado no runner' }
+          "ARAY_GOBIN=$go" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - name: Build single in-process DLL with Go c-shared
         shell: msys2 {0}
         run: |
           mkdir -p dist
+          export PATH="$(dirname "$(cygpath -u "$ARAY_GOBIN")"):$PATH"
           export CGO_ENABLED=1
-          export CC=/ucrt64/bin/gcc
+          export CC="$(cygpath -w /ucrt64/bin/gcc.exe)"
           "$CC" --version
           go version
           go build -trimpath -tags araydll -buildmode=c-shared -ldflags="-s -w" -o dist/ArayMinimap.dll ./cmd/aray-minimap

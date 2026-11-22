@@ -90,6 +90,8 @@ jobs:
           Write-Host $txt
           if ($txt -notmatch 'Aray Minimap DLL direta diagnosticada') { throw 'Inicializacao grafica nao foi concluida' }
           if ($txt -notmatch 'Janelas criadas:') { throw 'A interface Win32 nao criou suas janelas' }
+          if ($txt -notmatch 'Heartbeat Win32:') { throw 'O loop Win32 nao avancou apos criar as janelas' }
+          if ($txt -notmatch 'Iniciando busca de assinaturas de memoria em goroutine') { throw 'Leitura de memoria nao foi desacoplada do loop Win32' }
       - name: Test installation in mock game folder
         shell: pwsh
         run: |
